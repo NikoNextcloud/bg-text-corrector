@@ -148,11 +148,12 @@ async function correctWithGemini(text, mode) {
 Поправи всички правописни и граматически грешки. Добави липсващите препинателни знаци и премахни излишните. Запази оригиналния смисъл и стила на автора, освен ако промяна е необходима за правилен български език. Не добавяй нова информация и не съкращавай текста.
 Върни JSON с оригиналния текст, напълно коригирания текст и кратък списък с основните промени.`;
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "content-type": "application/json",
+      "x-goog-api-key": geminiApiKey,
     },
     body: JSON.stringify({
       contents: [
@@ -196,6 +197,10 @@ function buildGeminiErrorMessage(status, payload, responseBody = "") {
 
   const raw = String(responseBody || "").trim();
   if (raw) {
+    if (status === 403 && raw.startsWith("<!DOCTYPE html>")) {
+      return "Gemini грешка 403: Google отказва достъп до API ключа. Създай нов Gemini API key от Google AI Studio, махни ограниченията на ключа или го ограничи само до Gemini API, провери дали Generative Language API е разрешен за проекта и направи Clear build cache & deploy в Render.";
+    }
+
     return `Gemini грешка ${status}: ${raw.slice(0, 500)}`;
   }
 
