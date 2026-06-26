@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="bg">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Редактор на български текст</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-label="Редактор">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">AI редактор</p>
+            <h1>Корекция на български текст</h1>
+          </div>
+          <div class="status" id="status">Готов</div>
+        </header>
+
+        <div class="editor-grid">
+          <section class="panel input-panel" aria-label="Входен текст">
+            <div class="panel-head">
+              <h2>Текст за проверка</h2>
+              <button class="ghost-button" id="sampleButton" type="button">Пример</button>
+            </div>
+            <textarea id="inputText" spellcheck="true" placeholder="Напиши или постави текст тук..."></textarea>
+            <div class="tools-row">
+              <button class="primary-button" id="correctButton" type="button">Коригирай</button>
+              <button class="secondary-button" id="changesButton" type="button">Покажи поправките</button>
+              <button class="ghost-button" id="clearButton" type="button">Изчисти</button>
+            </div>
+          </section>
+
+          <section class="panel result-panel" aria-label="Коригиран текст">
+            <div class="panel-head">
+              <h2>Коригиран вариант</h2>
+              <button class="ghost-button" id="copyButton" type="button">Копирай</button>
+            </div>
+            <textarea id="outputText" readonly placeholder="Тук ще се появи готовият текст."></textarea>
+            <p class="hint" id="modeHint">Когато няма API ключ, приложението показва локален демо резултат.</p>
+          </section>
+        </div>
+
+        <section class="changes-panel" id="changesPanel" aria-label="Показани поправки" hidden>
+          <div class="panel-head">
+            <h2>Поправки</h2>
+            <span id="changesCount">0 промени</span>
+          </div>
+          <div class="changes-list" id="changesList"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

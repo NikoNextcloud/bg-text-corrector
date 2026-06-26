@@ -1,0 +1,12 @@
+{
+  "name": "bg-text-corrector",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Локално приложение за корекция на български текст с AI.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
