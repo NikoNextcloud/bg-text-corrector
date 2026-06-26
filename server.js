@@ -6,7 +6,7 @@ loadEnvFile(path.join(__dirname, ".env"));
 
 const port = Number(process.env.PORT || 8787);
 const publicDir = path.join(__dirname, "public");
-const model = process.env.OPENAI_MODEL || "gpt-5.2";
+const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -18,7 +18,6 @@ const mimeTypes = {
 
 const correctionSchema = {
   type: "object",
-  additionalProperties: false,
   required: ["original", "corrected", "changes"],
   properties: {
     original: { type: "string" },
@@ -27,7 +26,6 @@ const correctionSchema = {
       type: "array",
       items: {
         type: "object",
-        additionalProperties: false,
         required: ["from", "to", "reason"],
         properties: {
           from: { type: "string" },
@@ -55,7 +53,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
     if (req.method === "GET" && url.pathname === "/health") {
-      sendJson(res, 200, { ok: true, ai: Boolean(process.env.OPENAI_API_KEY), model });
+      sendJson(res, 200, { ok: true, ai: Boolean(process.env.GEMINI_API_KEY), model });
       return;
     }
 
@@ -69,14 +67,14 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const result = process.env.OPENAI_API_KEY
-        ? await correctWithOpenAI(text, mode)
+      const result = process.env.GEMINI_API_KEY
+        ? await correctWithGemini(text, mode)
         : createLocalDemoCorrection(text);
 
       sendJson(res, 200, {
         ok: true,
-        mode: process.env.OPENAI_API_KEY ? "ai" : "demo",
-        model: process.env.OPENAI_API_KEY ? model : "Локален демо режим",
+        mode: process.env.GEMINI_API_KEY ? "ai" : "demo",
+        model: process.env.GEMINI_API_KEY ? model : "Локален демо режим",
         result,
       });
       return;
@@ -100,11 +98,11 @@ server.listen(port, () => {
   console.log("");
   console.log("Редакторът работи.");
   console.log(`Отвори: http://localhost:${port}`);
-  console.log(process.env.OPENAI_API_KEY ? "AI режим: включен" : "AI режим: демо, липсва OPENAI_API_KEY");
+  console.log(process.env.GEMINI_API_KEY ? "AI режим: Gemini включен" : "AI режим: демо, липсва GEMINI_API_KEY");
   console.log("");
 });
 
-async function correctWithOpenAI(text, mode) {
+async function correctWithGemini(text, mode) {
   const wantsChanges = mode === "changes";
   const systemPrompt = wantsChanges
     ? `Ти си професионален редактор на български език.
@@ -117,49 +115,42 @@ async function correctWithOpenAI(text, mode) {
 Поправи всички правописни и граматически грешки. Добави липсващите препинателни знаци и премахни излишните. Запази оригиналния смисъл и стила на автора, освен ако промяна е необходима за правилен български език. Не добавяй нова информация и не съкращавай текста.
 Върни JSON с оригиналния текст, напълно коригирания текст и кратък списък с основните промени.`;
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "x-goog-api-key": process.env.GEMINI_API_KEY,
     },
     body: JSON.stringify({
       model,
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `Поправи следния текст:\n\n${text}` },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "bulgarian_correction",
-          strict: true,
-          schema: correctionSchema,
-        },
+      input: `${systemPrompt}\n\nПоправи следния текст:\n\n${text}`,
+      response_format: {
+        type: "text",
+        mime_type: "application/json",
+        schema: correctionSchema,
       },
     }),
   });
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = payload.error?.message || "OpenAI заявката не беше успешна.";
+    const message = payload.error?.message || "Gemini заявката не беше успешна.";
     throw new Error(message);
   }
 
-  const content = extractResponseText(payload);
+  const content = extractGeminiText(payload);
   const parsed = JSON.parse(content);
   parsed.original = text;
   return parsed;
 }
 
-function extractResponseText(payload) {
+function extractGeminiText(payload) {
   if (payload.output_text) return payload.output_text;
+  if (typeof payload.text === "string") return payload.text;
 
-  for (const item of payload.output || []) {
-    for (const content of item.content || []) {
-      if (content.type === "output_text" && content.text) return content.text;
-      if (content.text) return content.text;
-    }
+  for (const output of payload.output || []) {
+    if (typeof output === "string") return output;
+    if (output.text) return output.text;
   }
 
   throw new Error("Няма върнат коригиран текст.");
