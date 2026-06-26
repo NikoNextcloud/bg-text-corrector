@@ -26,7 +26,7 @@ https://aistudio.google.com/app/apikey
 
 ```text
 GEMINI_API_KEY=твоя_нов_ключ
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_MODEL=gemini-1.5-flash
 ```
 
 Не трябва да има нужда от:
@@ -63,7 +63,7 @@ Manual Deploy -> Deploy latest commit
 Смени `GEMINI_MODEL` на:
 
 ```text
-gemini-3.5-flash
+gemini-1.5-flash
 ```
 
 ## 5. Проверка на Render logs

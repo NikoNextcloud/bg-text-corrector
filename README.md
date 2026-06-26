@@ -48,7 +48,7 @@ https://nodejs.org/
 
 ```text
 GEMINI_API_KEY=твоя_ключ_от_Google_AI_Studio
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_MODEL=gemini-1.5-flash
 PORT=8787
 ```
 

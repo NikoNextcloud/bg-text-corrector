@@ -6,7 +6,7 @@ loadEnvFile(path.join(__dirname, ".env"));
 
 const port = Number(process.env.PORT || 8787);
 const publicDir = path.join(__dirname, "public");
-const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
 const geminiApiKey = (process.env.GEMINI_API_KEY || "").trim();
 
 const mimeTypes = {
@@ -47,6 +47,38 @@ const correctionSchema = {
       }
     }
   }
+};
+
+const geminiResponseSchema = {
+  type: "OBJECT",
+  properties: {
+    original: { type: "STRING" },
+    corrected: { type: "STRING" },
+    changes: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          from: { type: "STRING" },
+          to: { type: "STRING" },
+          reason: {
+            type: "STRING",
+            enum: [
+              "Правопис",
+              "Граматика",
+              "Пунктуация",
+              "Главни и малки букви",
+              "Съгласуване",
+              "Дума",
+              "Друго"
+            ]
+          }
+        },
+        required: ["from", "to", "reason"]
+      }
+    }
+  },
+  required: ["original", "corrected", "changes"]
 };
 
 const server = http.createServer(async (req, res) => {
@@ -116,19 +148,27 @@ async function correctWithGemini(text, mode) {
 Поправи всички правописни и граматически грешки. Добави липсващите препинателни знаци и премахни излишните. Запази оригиналния смисъл и стила на автора, освен ако промяна е необходима за правилен български език. Не добавяй нова информация и не съкращавай текста.
 Върни JSON с оригиналния текст, напълно коригирания текст и кратък списък с основните промени.`;
 
-  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-goog-api-key": geminiApiKey,
     },
     body: JSON.stringify({
-      model,
-      input: `${systemPrompt}\n\nПоправи следния текст:\n\n${text}`,
-      response_format: {
-        type: "text",
-        mime_type: "application/json",
-        schema: correctionSchema,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `${systemPrompt}\n\nПоправи следния текст:\n\n${text}`
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: "application/json",
+        responseSchema: geminiResponseSchema,
       },
     }),
   });
@@ -173,6 +213,11 @@ function parseJsonOrEmpty(text) {
 function extractGeminiText(payload) {
   if (payload.output_text) return payload.output_text;
   if (typeof payload.text === "string") return payload.text;
+
+  const parts = payload.candidates?.[0]?.content?.parts || [];
+  for (const part of parts) {
+    if (part.text) return part.text;
+  }
 
   for (const output of payload.output || []) {
     if (typeof output === "string") return output;
