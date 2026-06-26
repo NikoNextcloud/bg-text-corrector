@@ -133,9 +133,10 @@ async function correctWithGemini(text, mode) {
     }),
   });
 
-  const payload = await response.json().catch(() => ({}));
+  const responseBody = await response.text();
+  const payload = parseJsonOrEmpty(responseBody);
   if (!response.ok) {
-    throw new Error(buildGeminiErrorMessage(response.status, payload));
+    throw new Error(buildGeminiErrorMessage(response.status, payload, responseBody));
   }
 
   const content = extractGeminiText(payload);
@@ -144,7 +145,7 @@ async function correctWithGemini(text, mode) {
   return parsed;
 }
 
-function buildGeminiErrorMessage(status, payload) {
+function buildGeminiErrorMessage(status, payload, responseBody = "") {
   const apiMessage = payload.error?.message || payload.message || "";
   const apiStatus = payload.error?.status || "";
   const details = [apiStatus, apiMessage].filter(Boolean).join(": ");
@@ -153,7 +154,20 @@ function buildGeminiErrorMessage(status, payload) {
     return `Gemini грешка ${status}: ${details}`;
   }
 
-  return `Gemini заявката не беше успешна. HTTP статус: ${status}.`;
+  const raw = String(responseBody || "").trim();
+  if (raw) {
+    return `Gemini грешка ${status}: ${raw.slice(0, 500)}`;
+  }
+
+  return `Gemini заявката не беше успешна. HTTP статус: ${status}. Провери дали GEMINI_API_KEY е нов валиден ключ от Google AI Studio и дали Render е redeploy-нат.`;
+}
+
+function parseJsonOrEmpty(text) {
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return {};
+  }
 }
 
 function extractGeminiText(payload) {
