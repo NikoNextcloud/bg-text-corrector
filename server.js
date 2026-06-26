@@ -7,6 +7,7 @@ loadEnvFile(path.join(__dirname, ".env"));
 const port = Number(process.env.PORT || 8787);
 const publicDir = path.join(__dirname, "public");
 const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+const geminiApiKey = (process.env.GEMINI_API_KEY || "").trim();
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -53,7 +54,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
     if (req.method === "GET" && url.pathname === "/health") {
-      sendJson(res, 200, { ok: true, ai: Boolean(process.env.GEMINI_API_KEY), model });
+      sendJson(res, 200, { ok: true, ai: Boolean(geminiApiKey), model });
       return;
     }
 
@@ -67,14 +68,14 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const result = process.env.GEMINI_API_KEY
+      const result = geminiApiKey
         ? await correctWithGemini(text, mode)
         : createLocalDemoCorrection(text);
 
       sendJson(res, 200, {
         ok: true,
-        mode: process.env.GEMINI_API_KEY ? "ai" : "demo",
-        model: process.env.GEMINI_API_KEY ? model : "Локален демо режим",
+        mode: geminiApiKey ? "ai" : "demo",
+        model: geminiApiKey ? model : "Локален демо режим",
         result,
       });
       return;
@@ -98,7 +99,7 @@ server.listen(port, () => {
   console.log("");
   console.log("Редакторът работи.");
   console.log(`Отвори: http://localhost:${port}`);
-  console.log(process.env.GEMINI_API_KEY ? "AI режим: Gemini включен" : "AI режим: демо, липсва GEMINI_API_KEY");
+  console.log(geminiApiKey ? "AI режим: Gemini включен" : "AI режим: демо, липсва GEMINI_API_KEY");
   console.log("");
 });
 
@@ -119,7 +120,7 @@ async function correctWithGemini(text, mode) {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-goog-api-key": process.env.GEMINI_API_KEY,
+      "x-goog-api-key": geminiApiKey,
     },
     body: JSON.stringify({
       model,
@@ -134,14 +135,25 @@ async function correctWithGemini(text, mode) {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = payload.error?.message || "Gemini заявката не беше успешна.";
-    throw new Error(message);
+    throw new Error(buildGeminiErrorMessage(response.status, payload));
   }
 
   const content = extractGeminiText(payload);
   const parsed = JSON.parse(content);
   parsed.original = text;
   return parsed;
+}
+
+function buildGeminiErrorMessage(status, payload) {
+  const apiMessage = payload.error?.message || payload.message || "";
+  const apiStatus = payload.error?.status || "";
+  const details = [apiStatus, apiMessage].filter(Boolean).join(": ");
+
+  if (details) {
+    return `Gemini грешка ${status}: ${details}`;
+  }
+
+  return `Gemini заявката не беше успешна. HTTP статус: ${status}.`;
 }
 
 function extractGeminiText(payload) {

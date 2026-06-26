@@ -92,3 +92,9 @@ GitHub Pages не е подходящ за това приложение, ако
 ```text
 INSTALL_BG.md
 ```
+
+За Gemini грешки виж:
+
+```text
+GEMINI_TROUBLESHOOTING.md
+```
