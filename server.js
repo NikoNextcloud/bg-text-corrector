@@ -6,8 +6,8 @@ loadEnvFile(path.join(__dirname, ".env"));
 
 const port = Number(process.env.PORT || 8787);
 const publicDir = path.join(__dirname, "public");
-const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
-const geminiApiKey = (process.env.GEMINI_API_KEY || "").trim();
+const model = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+const groqApiKey = (process.env.GROQ_API_KEY || "").trim();
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -49,44 +49,12 @@ const correctionSchema = {
   }
 };
 
-const geminiResponseSchema = {
-  type: "OBJECT",
-  properties: {
-    original: { type: "STRING" },
-    corrected: { type: "STRING" },
-    changes: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        properties: {
-          from: { type: "STRING" },
-          to: { type: "STRING" },
-          reason: {
-            type: "STRING",
-            enum: [
-              "Правопис",
-              "Граматика",
-              "Пунктуация",
-              "Главни и малки букви",
-              "Съгласуване",
-              "Дума",
-              "Друго"
-            ]
-          }
-        },
-        required: ["from", "to", "reason"]
-      }
-    }
-  },
-  required: ["original", "corrected", "changes"]
-};
-
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
     if (req.method === "GET" && url.pathname === "/health") {
-      sendJson(res, 200, { ok: true, ai: Boolean(geminiApiKey), model });
+      sendJson(res, 200, { ok: true, ai: Boolean(groqApiKey), model });
       return;
     }
 
@@ -100,14 +68,14 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const result = geminiApiKey
-        ? await correctWithGemini(text, mode)
+      const result = groqApiKey
+        ? await correctWithGroq(text, mode)
         : createLocalDemoCorrection(text);
 
       sendJson(res, 200, {
         ok: true,
-        mode: geminiApiKey ? "ai" : "demo",
-        model: geminiApiKey ? model : "Локален демо режим",
+        mode: groqApiKey ? "ai" : "demo",
+        model: groqApiKey ? model : "Локален демо режим",
         result,
       });
       return;
@@ -131,11 +99,11 @@ server.listen(port, () => {
   console.log("");
   console.log("Редакторът работи.");
   console.log(`Отвори: http://localhost:${port}`);
-  console.log(geminiApiKey ? "AI режим: Gemini включен" : "AI режим: демо, липсва GEMINI_API_KEY");
+  console.log(groqApiKey ? "AI режим: Groq включен" : "AI режим: демо, липсва GROQ_API_KEY");
   console.log("");
 });
 
-async function correctWithGemini(text, mode) {
+async function correctWithGroq(text, mode) {
   const wantsChanges = mode === "changes";
   const systemPrompt = wantsChanges
     ? `Ти си професионален редактор на български език.
@@ -148,63 +116,71 @@ async function correctWithGemini(text, mode) {
 Поправи всички правописни и граматически грешки. Добави липсващите препинателни знаци и премахни излишните. Запази оригиналния смисъл и стила на автора, освен ако промяна е необходима за правилен български език. Не добавяй нова информация и не съкращавай текста.
 Върни JSON с оригиналния текст, напълно коригирания текст и кратък списък с основните промени.`;
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  const response = await fetch(endpoint, {
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-goog-api-key": geminiApiKey,
+      authorization: `Bearer ${groqApiKey}`,
     },
     body: JSON.stringify({
-      contents: [
+      model,
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `${systemPrompt}
+
+Върни само валиден JSON със структура:
+{
+  "original": "оригиналният текст",
+  "corrected": "поправеният текст",
+  "changes": [
+    { "from": "какво е било", "to": "какво става", "reason": "Правопис" }
+  ]
+}
+
+Позволени причини: Правопис, Граматика, Пунктуация, Главни и малки букви, Съгласуване, Дума, Друго.`
+        },
         {
           role: "user",
-          parts: [
-            {
-              text: `${systemPrompt}\n\nПоправи следния текст:\n\n${text}`
-            }
-          ]
+          content: `Поправи следния текст:\n\n${text}`
         }
-      ],
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: "application/json",
-        responseSchema: geminiResponseSchema,
-      },
+      ]
     }),
   });
 
   const responseBody = await response.text();
   const payload = parseJsonOrEmpty(responseBody);
   if (!response.ok) {
-    throw new Error(buildGeminiErrorMessage(response.status, payload, responseBody));
+    throw new Error(buildGroqErrorMessage(response.status, payload, responseBody));
   }
 
-  const content = extractGeminiText(payload);
-  const parsed = JSON.parse(content);
+  const content = payload.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("Groq не върна коригиран текст.");
+  }
+
+  const parsed = parseCorrectionJson(content);
   parsed.original = text;
   return parsed;
 }
 
-function buildGeminiErrorMessage(status, payload, responseBody = "") {
+function buildGroqErrorMessage(status, payload, responseBody = "") {
   const apiMessage = payload.error?.message || payload.message || "";
   const apiStatus = payload.error?.status || "";
   const details = [apiStatus, apiMessage].filter(Boolean).join(": ");
 
   if (details) {
-    return `Gemini грешка ${status}: ${details}`;
+    return `Groq грешка ${status}: ${details}`;
   }
 
   const raw = String(responseBody || "").trim();
   if (raw) {
-    if (status === 403 && raw.startsWith("<!DOCTYPE html>")) {
-      return "Gemini грешка 403: Google отказва достъп до API ключа. Създай нов Gemini API key от Google AI Studio, махни ограниченията на ключа или го ограничи само до Gemini API, провери дали Generative Language API е разрешен за проекта и направи Clear build cache & deploy в Render.";
-    }
-
-    return `Gemini грешка ${status}: ${raw.slice(0, 500)}`;
+    return `Groq грешка ${status}: ${raw.slice(0, 500)}`;
   }
 
-  return `Gemini заявката не беше успешна. HTTP статус: ${status}. Провери дали GEMINI_API_KEY е нов валиден ключ от Google AI Studio и дали Render е redeploy-нат.`;
+  return `Groq заявката не беше успешна. HTTP статус: ${status}. Провери дали GROQ_API_KEY е правилен и дали Render е redeploy-нат.`;
 }
 
 function parseJsonOrEmpty(text) {
@@ -215,21 +191,15 @@ function parseJsonOrEmpty(text) {
   }
 }
 
-function extractGeminiText(payload) {
-  if (payload.output_text) return payload.output_text;
-  if (typeof payload.text === "string") return payload.text;
-
-  const parts = payload.candidates?.[0]?.content?.parts || [];
-  for (const part of parts) {
-    if (part.text) return part.text;
+function parseCorrectionJson(content) {
+  const raw = String(content || "").trim();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error("AI върна невалиден JSON.");
   }
-
-  for (const output of payload.output || []) {
-    if (typeof output === "string") return output;
-    if (output.text) return output.text;
-  }
-
-  throw new Error("Няма върнат коригиран текст.");
 }
 
 function createLocalDemoCorrection(text) {

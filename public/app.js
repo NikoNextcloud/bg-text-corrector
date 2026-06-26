@@ -64,8 +64,8 @@ async function correctText(mode) {
     changesPanel.hidden = mode !== "changes";
     modeHint.textContent =
       payload.mode === "ai"
-        ? `Коригирано с Gemini модел: ${payload.model}`
-        : "Демо режим: добави GEMINI_API_KEY, за да получиш пълна AI редакция.";
+        ? `Коригирано с Groq модел: ${payload.model}`
+        : "Демо режим: добави GROQ_API_KEY, за да получиш пълна AI редакция.";
     setStatus("Готово");
   } catch (error) {
     setStatus("Грешка");
